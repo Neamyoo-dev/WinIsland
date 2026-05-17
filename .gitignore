@@ -2,4 +2,5 @@
 .idea/
 /.claude/
 Page/node_modules/
+Page/.vitepress/cache
 Page/package-lock.json
