@@ -3,9 +3,9 @@
 use serde::{Deserialize, Serialize};
 
 pub use winisland_plugin_api::{
-    AnimationConfigC, IslandContentC, PluginGetInstanceFn, PluginHandle, PluginInstanceC,
-    PluginMetadataC, PluginResultC, PluginVTable, PluginType, ThemeColorsC,
-    ISLAND_CONTENT_TAG_MUSIC, ISLAND_CONTENT_TAG_NOTIFICATION, ISLAND_CONTENT_TAG_STATUS,
+    AnimationConfigC, ISLAND_CONTENT_TAG_MUSIC, ISLAND_CONTENT_TAG_NOTIFICATION,
+    ISLAND_CONTENT_TAG_STATUS, IslandContentC, PluginGetInstanceFn, PluginHandle, PluginInstanceC,
+    PluginMetadataC, PluginResultC, PluginType, PluginVTable, ThemeColorsC,
 };
 
 fn read_c_str(buf: &[u8]) -> String {
@@ -109,8 +109,18 @@ impl From<&ThemeColorsC> for ThemeColors {
     fn from(c: &ThemeColorsC) -> Self {
         Self {
             primary: (c.primary[0], c.primary[1], c.primary[2], c.primary[3]),
-            secondary: (c.secondary[0], c.secondary[1], c.secondary[2], c.secondary[3]),
-            background: (c.background[0], c.background[1], c.background[2], c.background[3]),
+            secondary: (
+                c.secondary[0],
+                c.secondary[1],
+                c.secondary[2],
+                c.secondary[3],
+            ),
+            background: (
+                c.background[0],
+                c.background[1],
+                c.background[2],
+                c.background[3],
+            ),
             text: (c.text[0], c.text[1], c.text[2], c.text[3]),
             border: (c.border[0], c.border[1], c.border[2], c.border[3]),
         }
