@@ -50,7 +50,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-winisland-plugin-api = { git = "https://github.com/Eatgrapes/WinIsland" }
+winisland-plugin-api = { git = "https://github.com/oneachina/WinIsland", branch = "feat/plugin-system" }
 ```
 
 ## Packaging as ZIP (ﾉ◕ヮ◕)ﾉ
