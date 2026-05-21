@@ -4,4 +4,3 @@ pub mod types;
 pub mod zip_loader;
 
 pub use manager::PluginManager;
-pub use types::IslandContent;

@@ -64,10 +64,6 @@ pub struct DrawIslandParams<'a> {
     pub lyrics: LyricsParams<'a>,
     pub window: WindowParams,
     pub style: StyleParams<'a>,
-    #[allow(dead_code)]
-    pub plugin_contents: &'a [(String, crate::plugin::IslandContent)],
-    pub drop_hint: bool,
-    pub installed_toast: Option<&'a str>,
 }
 
 pub fn draw_island(surface: &mut Surface<Arc<Window>, Arc<Window>>, params: DrawIslandParams<'_>) {
@@ -77,9 +73,6 @@ pub fn draw_island(surface: &mut Surface<Arc<Window>, Arc<Window>>, params: Draw
         lyrics,
         window,
         style,
-        plugin_contents: _,
-        drop_hint,
-        installed_toast,
     } = params;
 
     let LayoutParams {
@@ -419,28 +412,6 @@ pub fn draw_island(surface: &mut Surface<Arc<Window>, Arc<Window>>, params: Draw
                 canvas.restore();
             }
         }
-    }
-
-    if drop_hint || installed_toast.is_some() {
-        let text_y = offset_y + current_h / 2.0 + 4.0 * global_scale;
-        let text = if let Some(name) = installed_toast {
-            format!("\u{2705} 已加载 {}~", name)
-        } else {
-            "\u{1F4E6} 放入 zip~ 以加载插件".to_string()
-        };
-        let mut text_paint = Paint::default();
-        text_paint.set_anti_alias(true);
-        text_paint.set_color(Color::from_argb(220, 255, 255, 255));
-        draw_text_cached(DrawTextCachedParams {
-            canvas,
-            text: &text,
-            pos: (offset_x, text_y),
-            size: 13.0 * global_scale,
-            style: skia_safe::FontStyle::normal(),
-            paint: &text_paint,
-            align_center: true,
-            max_w: current_w,
-        });
     }
 
     canvas.restore();

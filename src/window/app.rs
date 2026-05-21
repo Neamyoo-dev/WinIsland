@@ -6,7 +6,7 @@ use crate::core::render::{
     draw_island,
 };
 use crate::core::smtc::SmtcListener;
-use crate::plugin::{IslandContent, PluginManager};
+use crate::plugin::PluginManager;
 use crate::ui::expanded::music_view::{
     get_next_btn_rect, get_pause_btn_rect, get_prev_btn_rect, get_progress_bar_rect,
     set_progress_dragging, set_progress_hover, trigger_cover_flip, trigger_next_click,
@@ -28,10 +28,11 @@ use std::time::{Duration, Instant};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Shell::{DragAcceptFiles, DragFinish, DragQueryFileW, HDROP};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GWL_EXSTYLE, GWL_STYLE, GetWindowLongPtrW, HWND_TOPMOST, MSG, PM_REMOVE, SWP_NOACTIVATE,
-    SetWindowLongPtrW, SetWindowPos, WM_DROPFILES, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-    WS_MAXIMIZEBOX, WS_THICKFRAME,
+    GWL_EXSTYLE, GWL_STYLE, GetWindowLongPtrW, HWND_TOPMOST, MB_ICONINFORMATION, MB_OK, MSG,
+    PM_REMOVE, SWP_NOACTIVATE, SetWindowLongPtrW, SetWindowPos, WM_DROPFILES,
+    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_MAXIMIZEBOX, WS_THICKFRAME, MessageBoxW,
 };
+use windows::core::PCWSTR;
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, TouchPhase, WindowEvent};
@@ -90,9 +91,6 @@ pub struct App {
     touch_id: Option<u64>,
     touch_pos: PhysicalPosition<f64>,
     plugin_mgr: PluginManager,
-    plugin_contents: Vec<(String, IslandContent)>,
-    zip_drop_hint: bool,
-    installed_toast: Option<(String, Instant)>,
     drop_registered: bool,
 }
 
@@ -153,9 +151,6 @@ impl Default for App {
             touch_id: None,
             touch_pos: PhysicalPosition::new(0.0, 0.0),
             plugin_mgr: PluginManager::default(),
-            plugin_contents: Vec::new(),
-            zip_drop_hint: false,
-            installed_toast: None,
             drop_registered: false,
         }
     }
@@ -505,9 +500,31 @@ impl App {
                 {
                     match self.plugin_mgr.install_from_zip(&path) {
                         Ok(manifest) => {
-                            self.installed_toast = Some((manifest.name.clone(), Instant::now()));
+                            let msg = format!("Plugin '{}' installed successfully!", manifest.name);
+                            let msg_wide: Vec<u16> = msg.encode_utf16().chain(std::iter::once(0)).collect();
+                            let title_wide: Vec<u16> = "WinIsland Plugin".encode_utf16().chain(std::iter::once(0)).collect();
+                            // SAFETY: wide strings are null-terminated, MessageBoxW is a documented Win32 API
+                            unsafe {
+                                MessageBoxW(
+                                    None,
+                                    PCWSTR::from_raw(msg_wide.as_ptr()),
+                                    PCWSTR::from_raw(title_wide.as_ptr()),
+                                    MB_OK | MB_ICONINFORMATION,
+                                );
+                            }
+                            log::info!("Plugin '{}' installed via drop", manifest.name);
                         }
                         Err(e) => {
+                            let err_wide: Vec<u16> = e.encode_utf16().chain(std::iter::once(0)).collect();
+                            let title_wide: Vec<u16> = "Plugin Error".encode_utf16().chain(std::iter::once(0)).collect();
+                            unsafe {
+                                MessageBoxW(
+                                    None,
+                                    PCWSTR::from_raw(err_wide.as_ptr()),
+                                    PCWSTR::from_raw(title_wide.as_ptr()),
+                                    MB_OK | MB_ICONINFORMATION,
+                                );
+                            }
                             log::error!("Failed to install plugin from drop: {}", e);
                         }
                     }
@@ -717,12 +734,6 @@ impl ApplicationHandler for App {
                                     font_size: self.config.font_size,
                                     weights: self.border_weights,
                                 },
-                                plugin_contents: &self.plugin_contents,
-                                drop_hint: self.zip_drop_hint,
-                                installed_toast: self
-                                    .installed_toast
-                                    .as_ref()
-                                    .map(|(s, _)| s.as_str()),
                             },
                         );
                     }
@@ -754,16 +765,6 @@ impl ApplicationHandler for App {
                         event_loop.exit();
                     }
                     None => (),
-                }
-            }
-            if self.frame_count.is_multiple_of(2) {
-                self.plugin_contents.clear();
-                for id in self.plugin_mgr.list_content_providers() {
-                    if let Ok(Some(content)) =
-                        self.plugin_mgr.with_content(&id, |cp| cp.get_content())
-                    {
-                        self.plugin_contents.push((id, content));
-                    }
                 }
             }
             if self.frame_count.is_multiple_of(60) {
@@ -888,9 +889,6 @@ impl ApplicationHandler for App {
             } else {
                 let _ = window.set_cursor_hittest(is_hovering_visible || is_on_hidden_handle);
             }
-
-            self.zip_drop_hint =
-                is_hovering_visible && is_left_button_pressed() && self.installed_toast.is_none();
 
             let mut music_active = false;
             let media = self.smtc.get_info();
@@ -1205,11 +1203,6 @@ impl ApplicationHandler for App {
         }
         if self.drop_registered {
             self.poll_file_drop();
-        }
-        if let Some((_, ts)) = &self.installed_toast
-            && ts.elapsed() > Duration::from_secs(3)
-        {
-            self.installed_toast = None;
         }
     }
 }
