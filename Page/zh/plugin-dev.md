@@ -1,6 +1,8 @@
 # 插件开发指南
 
-欢迎！(´｡• ᵕ •｡`)♡ 你正准备为 WinIsland 开发自己的插件。本指南将带你了解一切。
+欢迎！(´｡• ᵕ •｡`)♡ 你正准备为 WinIsland 开发自己的插件。
+
+> ⚠️ **注意：插件系统目前是基础框架阶段**。C ABI 类型定义已经就绪，但 Host 端的 trait 接口（`ContentProvider`、`ThemeProvider`、`ShortcutProvider`）**尚未接入渲染管线**。详见 [issue #55](https://github.com/Eatgrapes/WinIsland/issues/55)，非常建议去那里讨论灵感！
 
 ## 插件工作原理
 
@@ -20,15 +22,13 @@ WinIsland.exe  ──libloading──▶  your_plugin.dll
 
 所有跨 FFI 边界的数据都是 `#[repr(C)]` 的扁平结构体，没有 `Vec`、`String` 或 trait object。这意味着你的插件可以**用任意版本的 Rust 编译都能正常运行** (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧
 
-## 插件类型
+## 插件类型（计划中）
 
-你可以写三种插件：
-
-| 类型 | 作用 | 使用到的 VTable 字段 |
-|------|------|-------------------|
-| **Content** (id=1) | 提供自定义岛屿内容（天气、通知、状态…） | `get_content`, `on_click`, `on_expanded`, `supports_expand` |
-| **Theme** (id=2) | 覆盖岛屿颜色和动画参数 | `get_colors`, `get_animations` |
-| **Shortcut** (id=3) | 注册可执行动作 | _（vtable 中暂未暴露）_ |
+| 类型 | 作用 | 状态 |
+|------|------|------|
+| **Content** (id=1) | 提供自定义岛屿内容（天气、通知、状态…） | 🔲 API 待接入 |
+| **Theme** (id=2) | 覆盖岛屿颜色和动画参数 | 🔲 API 待接入 |
+| **Shortcut** (id=3) | 注册可执行动作 | 🔲 API 待接入 |
 
 ## 项目搭建
 
@@ -77,146 +77,26 @@ github-link: example/example-plugin
 
 ## 安装插件 ฅ^•ﻌ•^ฅ
 
-只需将 `.zip` 文件**拖放到 WinIsland 的岛上**即可！悬停时会显示 "📦 放入 zip~ 以加载插件"，松开鼠标后自动解压并加载，然后显示 "✅ 已加载 {name}~"
+只需将 `.zip` 文件**拖放到 WinIsland 的岛上**即可！插件会被解压到 `C:\Users\<你的用户名>\AppData\Roaming\WinIsland\plugins\<插件名>\`，并自动加载。
 
-插件会被解压到 `C:\Users\<你的用户名>\AppData\Roaming\WinIsland\plugins\<插件名>\`。
+加载成功后会弹出 Windows 通知框确认。
 
-## 编写一个 ContentProvider 插件
+你也可以手动将 `.dll` 放入 `plugins\` 文件夹下的子目录，WinIsland 启动时会自动扫描。
 
-下面是一个最小示例——显示点击次数的插件 (｡･ω･｡)：
+## 如何确认插件已加载？
 
-```rust
-use std::ffi::c_void;
-use winisland_plugin_api::*;
+由于 Host 端 API 还在开发中，插件暂时不会在 Island UI 上显示任何内容。
 
-struct HelloPlugin {
-    clicks: u32,
-}
+**验证方式：**
+1. 按 `F12` 打开 WinIsland 调试日志窗口
+2. 搜索你的插件名，应该能看到类似 `Loaded plugin: xxx (xxx)` 的日志
+3. 拖入 ZIP 后会有 Windows 弹出框提示安装成功/失败
 
-// ── VTable 回调 ──
-
-extern "C" fn hello_on_load(_handle: PluginHandle) -> PluginResultC {
-    PluginResultC::ok()
-}
-
-extern "C" fn hello_on_unload(_handle: PluginHandle) -> PluginResultC {
-    PluginResultC::ok()
-}
-
-extern "C" fn hello_destroy(handle: PluginHandle) {
-    unsafe { drop(Box::from_raw(handle as *mut HelloPlugin)); }
-}
-
-extern "C" fn hello_get_content(handle: PluginHandle) -> IslandContentC {
-    let plugin = unsafe { &mut *(handle as *mut HelloPlugin) };
-    let mut label = [0u8; 128];
-    let msg = format!("已点击 {} 次", plugin.clicks);
-    let bytes = msg.as_bytes();
-    let len = bytes.len().min(127);
-    label[..len].copy_from_slice(&bytes[..len]);
-
-    IslandContentC {
-        tag: ISLAND_CONTENT_TAG_STATUS,
-        label,
-        ..zero_content()
-    }
-}
-
-extern "C" fn hello_on_click(handle: PluginHandle) {
-    let plugin = unsafe { &mut *(handle as *mut HelloPlugin) };
-    plugin.clicks += 1;
-}
-
-extern "C" fn hello_supports_expand(_handle: PluginHandle) -> bool {
-    false
-}
-
-// ── VTable ──
-
-static VTABLE: PluginVTable = PluginVTable {
-    on_load: hello_on_load,
-    on_unload: hello_on_unload,
-    destroy: hello_destroy,
-    get_content: Some(hello_get_content),
-    on_click: Some(hello_on_click),
-    on_expanded: None,
-    supports_expand: Some(hello_supports_expand),
-    get_colors: None,
-    get_animations: None,
-};
-
-// ── 元信息 ──
-
-fn fill_metadata() -> PluginMetadataC {
-    let mut id = [0u8; 64];
-    let mut name = [0u8; 128];
-    let mut version = [0u8; 32];
-    let mut author = [0u8; 128];
-    let mut description = [0u8; 256];
-
-    write_str(&mut id, "hello_plugin");
-    write_str(&mut name, "Hello Plugin");
-    write_str(&mut version, "0.1.0");
-    write_str(&mut author, "You! o(TヘTo)");
-    write_str(&mut description, "A friendly example plugin");
-
-    PluginMetadataC { id, name, version, author, description }
-}
-
-fn write_str(buf: &mut [u8], s: &str) {
-    let bytes = s.as_bytes();
-    let len = bytes.len().min(buf.len() - 1);
-    buf[..len].copy_from_slice(&bytes[..len]);
-}
-
-fn zero_content() -> IslandContentC {
-    IslandContentC {
-        tag: 0,
-        title: [0u8; 256],
-        artist: [0u8; 256],
-        cover_url: [0u8; 512],
-        is_playing: false,
-        message: [0u8; 256],
-        label: [0u8; 128],
-        value: [0u8; 128],
-    }
-}
-
-// ── 入口 ──
-
-#[unsafe(no_mangle)]
-pub extern "C" fn plugin_get_instance() -> PluginInstanceC {
-    let plugin = Box::new(HelloPlugin { clicks: 0 });
-    PluginInstanceC {
-        handle: Box::into_raw(plugin) as PluginHandle,
-        metadata: fill_metadata(),
-        vtable: &VTABLE,
-        plugin_type: 1, // Content
-    }
-}
-```
-
-### 关键要点
-
-1. **只导出 `plugin_get_instance`** —— 这是 WinIsland 唯一查找的符号。
-2. **`handle` 是不透明的** —— 你拥有它的真实类型；Host 端永远不会直接碰它。
-3. **填充所有 C 结构体字段** —— 未初始化的字节是 UB。使用 `zero_content()` 或 `[0u8; N]`。
-4. **`destroy` 必须释放 handle** —— `Box::from_raw(handle)` 回收所有权，让 `drop` 执行。
-5. **不需要的 vtable 字段填 `None`** —— 你的插件类型不支持的字段放心设为 `None`。
-
-## IslandContentC 标签对照
-
-返回 `IslandContentC` 时，设置 `tag` 为以下值之一：
-
-| 标签常量 | 值 | 含义 |
-|---|---|---|
-| `ISLAND_CONTENT_TAG_MUSIC` | 1 | 填充 `title`, `artist`, `cover_url`, `is_playing` |
-| `ISLAND_CONTENT_TAG_NOTIFICATION` | 2 | 填充 `title`, `message`, `cover_url`（作为图标） |
-| `ISLAND_CONTENT_TAG_STATUS` | 3 | 填充 `label`, `value`, `cover_url`（作为图标） |
+算是个雏形吧 (｡･ω･｡)
 
 ## C ABI 类型参考
 
-所有类型都在 `winisland-plugin-api` crate 中，均为 `#[repr(C)]`。
+以下类型都在 `winisland-plugin-api` crate 中。API 接入前这些类型仅用于 DLL 加载验证，**插件的实际功能尚未在 UI 中生效**。
 
 ### PluginResultC
 
@@ -241,8 +121,6 @@ pub struct PluginMetadataC {
 }
 ```
 
-所有字符串均为以 `\0` 结尾的 UTF-8。
-
 ### IslandContentC
 
 ```rust
@@ -257,8 +135,6 @@ pub struct IslandContentC {
     pub value: [u8; 128],
 }
 ```
-
-具体哪些字段生效取决于 `tag`。不用的字段请填零。
 
 ### PluginVTable
 
@@ -305,14 +181,11 @@ pub struct AnimationConfigC {
 }
 ```
 
-## 排错指南 (╥﹏╥)
+## 参与讨论 (づ｡◕‿‿◕｡)づ
 
-| 问题 | 检查 |
-|---|---|
-| 插件没有被加载 | `.dll` 放对目录了吗？查看 WinIsland 日志有没有 "Failed to load plugin" |
-| Null handle / null vtable | `plugin_get_instance()` 必须填充所有字段 |
-| 启动时崩溃 | 确保所有 C 结构体字段都用 `zero_content()` 或 `[0u8; N]` 初始化 |
-| `get_content` 返回错误的数据 | 检查 `tag` 值和实际填充的字段是否匹配 |
+目前除了接入灵动岛的 context 之外还没什么确定的方向…… **真的没什么灵感啊 QWQ**
+
+非常欢迎到 [#55](https://github.com/Eatgrapes/WinIsland/issues/55) 讨论你希望插件系统支持什么功能！
 
 ---
 

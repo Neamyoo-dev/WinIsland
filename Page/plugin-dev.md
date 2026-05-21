@@ -1,6 +1,8 @@
 # Plugin Development Guide
 
-Welcome! (´｡• ᵕ •｡`)♡ You're about to extend WinIsland with your own plugin. This guide will walk you through everything you need to know.
+Welcome! (´｡• ᵕ •｡`)♡ You're about to extend WinIsland with your own plugin.
+
+> ⚠️ **Note: The plugin system is currently in a foundation stage.** The C ABI type definitions are ready, but the host-side trait interfaces (`ContentProvider`, `ThemeProvider`, `ShortcutProvider`) **are not yet wired into the render pipeline**. See [issue #55](https://github.com/Eatgrapes/WinIsland/issues/55) — we'd really love your input there!
 
 ## How Plugins Work
 
@@ -20,15 +22,13 @@ WinIsland.exe  ──libloading──▶  your_plugin.dll
 
 All data crossing the FFI boundary is `#[repr(C)]` — flat structs with no `Vec`, `String`, or trait objects. This means your plugin can be compiled with any Rust version and it'll still work (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧
 
-## Plugin Types
+## Plugin Types (Planned)
 
-You can write three kinds of plugins:
-
-| Type | What it does | VTable field |
-|------|-------------|-------------|
-| **Content** (id=1) | Provide custom island content (weather, notifications, status…) | `get_content`, `on_click`, `on_expanded`, `supports_expand` |
-| **Theme** (id=2) | Override island colors and animation parameters | `get_colors`, `get_animations` |
-| **Shortcut** (id=3) | Register executable actions | _(not yet exposed in vtable)_ |
+| Type | Purpose | Status |
+|------|---------|--------|
+| **Content** (id=1) | Provide custom island content (weather, notifications, status…) | 🔲 API pending |
+| **Theme** (id=2) | Override island colors and animation parameters | 🔲 API pending |
+| **Shortcut** (id=3) | Register executable actions | 🔲 API pending |
 
 ## Project Setup
 
@@ -77,146 +77,26 @@ github-link: example/example-plugin
 
 ## Installing ฅ^•ﻌ•^ฅ
 
-Simply **drag the `.zip` file onto the island**! While hovering it shows "📦 放入 zip~ 以加载插件", release to auto-extract and load, then see "✅ 已加载 {name}~"
+Simply **drag the `.zip` file onto the island**! The plugin is extracted to `C:\Users\<YourName>\AppData\Roaming\WinIsland\plugins\<plugin-name>\` and auto-loaded.
 
-Plugins are extracted to `C:\Users\<YourName>\AppData\Roaming\WinIsland\plugins\<plugin-name>\`.
+A Windows notification dialog will confirm successful installation.
 
-## Writing a ContentProvider Plugin
+You can also manually place `.dll` files into subdirectories under `plugins\` — WinIsland scans them on startup.
 
-Here's a minimal "Hello World" plugin that shows a status message (｡･ω･｡):
+## How to Verify Your Plugin Loaded?
 
-```rust
-use std::ffi::c_void;
-use winisland_plugin_api::*;
+Since the host-side API is still under development, plugins won't display anything on the Island UI yet.
 
-struct HelloPlugin {
-    clicks: u32,
-}
+**Verification:**
+1. Press `F12` to open the WinIsland debug log window
+2. Search for your plugin name — you should see something like `Loaded plugin: xxx (xxx)`
+3. Dropping a ZIP triggers a Windows popup confirming success/failure
 
-// ── VTable entries ──
-
-extern "C" fn hello_on_load(_handle: PluginHandle) -> PluginResultC {
-    PluginResultC::ok()
-}
-
-extern "C" fn hello_on_unload(_handle: PluginHandle) -> PluginResultC {
-    PluginResultC::ok()
-}
-
-extern "C" fn hello_destroy(handle: PluginHandle) {
-    unsafe { drop(Box::from_raw(handle as *mut HelloPlugin)); }
-}
-
-extern "C" fn hello_get_content(handle: PluginHandle) -> IslandContentC {
-    let plugin = unsafe { &mut *(handle as *mut HelloPlugin) };
-    let mut label = [0u8; 128];
-    let msg = format!("Clicked {} times", plugin.clicks);
-    let bytes = msg.as_bytes();
-    let len = bytes.len().min(127);
-    label[..len].copy_from_slice(&bytes[..len]);
-
-    IslandContentC {
-        tag: ISLAND_CONTENT_TAG_STATUS,
-        label,
-        ..zero_content()
-    }
-}
-
-extern "C" fn hello_on_click(handle: PluginHandle) {
-    let plugin = unsafe { &mut *(handle as *mut HelloPlugin) };
-    plugin.clicks += 1;
-}
-
-extern "C" fn hello_supports_expand(_handle: PluginHandle) -> bool {
-    false
-}
-
-// ── VTable ──
-
-static VTABLE: PluginVTable = PluginVTable {
-    on_load: hello_on_load,
-    on_unload: hello_on_unload,
-    destroy: hello_destroy,
-    get_content: Some(hello_get_content),
-    on_click: Some(hello_on_click),
-    on_expanded: None,
-    supports_expand: Some(hello_supports_expand),
-    get_colors: None,
-    get_animations: None,
-};
-
-// ── Metadata ──
-
-fn fill_metadata() -> PluginMetadataC {
-    let mut id = [0u8; 64];
-    let mut name = [0u8; 128];
-    let mut version = [0u8; 32];
-    let mut author = [0u8; 128];
-    let mut description = [0u8; 256];
-
-    write_str(&mut id, "hello_plugin");
-    write_str(&mut name, "Hello Plugin");
-    write_str(&mut version, "0.1.0");
-    write_str(&mut author, "You! o(TヘTo)");
-    write_str(&mut description, "A friendly example plugin");
-
-    PluginMetadataC { id, name, version, author, description }
-}
-
-fn write_str(buf: &mut [u8], s: &str) {
-    let bytes = s.as_bytes();
-    let len = bytes.len().min(buf.len() - 1);
-    buf[..len].copy_from_slice(&bytes[..len]);
-}
-
-fn zero_content() -> IslandContentC {
-    IslandContentC {
-        tag: 0,
-        title: [0u8; 256],
-        artist: [0u8; 256],
-        cover_url: [0u8; 512],
-        is_playing: false,
-        message: [0u8; 256],
-        label: [0u8; 128],
-        value: [0u8; 128],
-    }
-}
-
-// ── Entry point ──
-
-#[unsafe(no_mangle)]
-pub extern "C" fn plugin_get_instance() -> PluginInstanceC {
-    let plugin = Box::new(HelloPlugin { clicks: 0 });
-    PluginInstanceC {
-        handle: Box::into_raw(plugin) as PluginHandle,
-        metadata: fill_metadata(),
-        vtable: &VTABLE,
-        plugin_type: 1, // Content
-    }
-}
-```
-
-### Key Points
-
-1. **Only export `plugin_get_instance`** — this is the only symbol WinIsland looks for.
-2. **`handle` is opaque** — you own its type; the host never touches it directly.
-3. **Fill all C struct fields** — uninitialized bytes are UB. Use `zero_content()` or `[0u8; N]`.
-4. **`destroy` must free the handle** — `Box::from_raw(handle)` gives ownership back so `drop` runs.
-5. **Null vtable entries are fine** — fill `None` for features your plugin type doesn't support.
-
-## IslandContentC Tags
-
-When returning `IslandContentC`, set `tag` to one of:
-
-| Tag constant | Value | Meaning |
-|---|---|---|
-| `ISLAND_CONTENT_TAG_MUSIC` | 1 | Fill `title`, `artist`, `cover_url`, `is_playing` |
-| `ISLAND_CONTENT_TAG_NOTIFICATION` | 2 | Fill `title`, `message`, `cover_url` (as icon) |
-| `ISLAND_CONTENT_TAG_STATUS` | 3 | Fill `label`, `value`, `cover_url` (as icon) |
+It's a rough skeleton, but it works! (｡･ω･｡)
 
 ## C ABI Type Reference
 
-These types live in the `winisland-plugin-api` crate. All are `#[repr(C)]`.
+These types live in the `winisland-plugin-api` crate. Before API integration, they're only used for DLL loading validation — **plugin functionality is not yet visible in the UI**.
 
 ### PluginResultC
 
@@ -241,8 +121,6 @@ pub struct PluginMetadataC {
 }
 ```
 
-All strings are null-terminated UTF-8.
-
 ### IslandContentC
 
 ```rust
@@ -257,8 +135,6 @@ pub struct IslandContentC {
     pub value: [u8; 128],
 }
 ```
-
-Which fields are used depends on `tag`. Unused fields should be zeroed.
 
 ### PluginVTable
 
@@ -305,14 +181,11 @@ pub struct AnimationConfigC {
 }
 ```
 
-## Troubleshooting (╥﹏╥)
+## Join the Discussion (づ｡◕‿‿◕｡)づ
 
-| Problem | Check |
-|---|---|
-| Plugin not loaded | Is the `.dll` in the right directory? Check WinIsland logs for "Failed to load plugin" |
-| Null handle / null vtable | `plugin_get_instance()` must fill all fields |
-| Crash on startup | Make sure `zero_content()` or `= [0u8; N]` is used for all struct fields |
-| `get_content` returns wrong data | Double-check `tag` value and which fields you filled |
+Beyond hooking into the Island context, we don't have many concrete directions yet… **we're really short on inspiration QWQ**
+
+Please join us at [#55](https://github.com/Eatgrapes/WinIsland/issues/55) to discuss what you'd like the plugin system to support!
 
 ---
 
