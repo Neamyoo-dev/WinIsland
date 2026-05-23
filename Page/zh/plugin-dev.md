@@ -50,7 +50,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-winisland-plugin-api = { git = "https://github.com/oneachina/WinIsland", branch = "feat/plugin-system" }
+winisland-plugin-api = { git = "https://github.com/Eatgrapes/WinIsland", branch = "master" }
 ```
 
 ## 打包为 ZIP (ﾉ◕ヮ◕)ﾉ
@@ -60,7 +60,7 @@ winisland-plugin-api = { git = "https://github.com/oneachina/WinIsland", branch 
 ```
 my-plugin.zip
 ├── plugin.yml    ← 插件说明（必选）
-└── *.dll         ← 插件本体（必选，支持多个 .dll）
+└── *.dll         ← 插件本体（必选，可包含多个 .dll，所有 .dll 都会被加载）
 ```
 
 ### plugin.yml

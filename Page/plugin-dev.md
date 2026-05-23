@@ -50,7 +50,7 @@ edition = "2024"
 crate-type = ["cdylib"]
 
 [dependencies]
-winisland-plugin-api = { git = "https://github.com/oneachina/WinIsland", branch = "feat/plugin-system" }
+winisland-plugin-api = { git = "https://github.com/Eatgrapes/WinIsland", branch = "master" }
 ```
 
 ## Packaging as ZIP (ﾉ◕ヮ◕)ﾉ
@@ -60,7 +60,7 @@ Your plugin must be packaged as `.zip` to be loaded by WinIsland. The ZIP must c
 ```
 my-plugin.zip
 ├── plugin.yml    ← plugin manifest (required)
-└── *.dll         ← plugin binary (required, multiple .dll OK)
+└── *.dll         ← plugin binary (required, multiple .dll OK — all will be loaded)
 ```
 
 ### plugin.yml
