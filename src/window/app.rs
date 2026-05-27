@@ -797,6 +797,9 @@ impl ApplicationHandler for App {
                         self.open_settings();
                     }
                     Some(TrayAction::Exit) => {
+                        if let Some(mut settings) = self.settings_process.borrow_mut().take() {
+                            let _ = settings.kill();
+                        }
                         event_loop.exit();
                     }
                     None => (),

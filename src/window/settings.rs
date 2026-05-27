@@ -1355,7 +1355,7 @@ impl SettingsApp {
 impl ApplicationHandler for SettingsApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let attrs = Window::default_attributes()
-            .with_title("Settings")
+            .with_title("WinIsland Settings")
             .with_inner_size(LogicalSize::new(WIN_W as f64, WIN_H as f64))
             .with_resizable(false)
             .with_enabled_buttons(WindowButtons::CLOSE | WindowButtons::MINIMIZE)
@@ -1586,7 +1586,7 @@ impl ApplicationHandler for SettingsApp {
 
 pub fn bring_settings_to_front() {
     unsafe {
-        let hwnd = FindWindowW(None, w!("Settings"));
+        let hwnd = FindWindowW(None, w!("WinIsland Settings"));
         if let Ok(hwnd) = hwnd
             && !hwnd.is_invalid()
         {
