@@ -1520,7 +1520,6 @@ impl ApplicationHandler for SettingsApp {
             // SAFETY: OpenMutexW opens an existing named mutex. The mutex name is a static
             // string literal. CloseHandle is called on the valid handle returned by OpenMutexW.
             unsafe {
-
                 let h = OpenMutexW(
                     MUTEX_ALL_ACCESS,
                     false,
