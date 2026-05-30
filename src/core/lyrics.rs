@@ -16,7 +16,7 @@ fn query_matches_song(query: &str, song_name: &str) -> bool {
         .filter(|w| w.len() > 2)
         .collect();
     if words.is_empty() {
-        return true;
+        return false;
     }
     words.iter().any(|w| n.contains(w))
 }
