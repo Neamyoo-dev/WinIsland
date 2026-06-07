@@ -656,13 +656,16 @@ impl App {
                     self.visible = !self.visible;
                     window.set_visible(self.visible);
                     tray.update_item_text(self.visible);
+                    log::info!("Tray: visibility toggled to {}", self.visible);
                 }
                 Some(TrayAction::OpenSettings) => {
+                    log::info!("Tray: opening settings");
                     if let Ok(exe) = std::env::current_exe() {
                         let _ = std::process::Command::new(exe).arg("--settings").spawn();
                     }
                 }
                 Some(TrayAction::Restart) => {
+                    log::info!("Tray: restarting application");
                     Self::close_settings_window();
                     if let Ok(exe) = std::env::current_exe() {
                         let _ = std::process::Command::new(exe).arg("--restart").spawn();
@@ -670,6 +673,7 @@ impl App {
                     event_loop.exit();
                 }
                 Some(TrayAction::Exit) => {
+                    log::info!("Tray: exiting application");
                     Self::close_settings_window();
                     event_loop.exit();
                 }
@@ -692,6 +696,7 @@ impl App {
             let old_expanded_shape = self.config.expanded_cover_shape.clone();
             let old_font = self.config.custom_font_path.clone();
 
+            log::info!("Config changed, reloaded");
             self.config = current_config;
             self.smtc
                 .set_lyrics_source(self.config.lyrics_source.clone());
@@ -864,6 +869,10 @@ impl ApplicationHandler for App {
         if self.window.is_none() {
             Self::set_aumid();
             self.plugin_mgr.load_all();
+            let plugin_count = self.plugin_mgr.list_content_providers().len()
+                + self.plugin_mgr.list_theme_providers().len()
+                + self.plugin_mgr.list_shortcut_providers().len();
+            log::info!("{} plugin(s) loaded", plugin_count);
             let max_w = self.config.expanded_width.max(450.0);
             self.os_w = (max_w * self.config.global_scale + PADDING) as u32;
             self.os_h = (self.config.expanded_height * self.config.global_scale + PADDING) as u32;
@@ -900,6 +909,13 @@ impl ApplicationHandler for App {
             }
 
             self.window = Some(window.clone());
+            log::info!(
+                "Window created: {}x{} (base {}x{})",
+                self.os_w,
+                self.os_h,
+                self.config.base_width,
+                self.config.base_height
+            );
 
             let mut monitor_opt = None;
             for _ in 0..10 {
@@ -921,18 +937,87 @@ impl ApplicationHandler for App {
                 self.last_mon_pos = (mon_pos.x, mon_pos.y);
                 (self.win_x, self.win_y) = self.compute_window_position(mon_pos, mon_size);
                 window.set_outer_position(PhysicalPosition::new(self.win_x, self.win_y));
+                log::info!(
+                    "Monitor: {}x{} @ ({}, {}); window @ ({}, {})",
+                    mon_size.width,
+                    mon_size.height,
+                    mon_pos.x,
+                    mon_pos.y,
+                    self.win_x,
+                    self.win_y
+                );
                 if self.config.island_style == "mica" {
                     clear_mica_cache();
                 }
             }
-            let context = Context::new(window.clone()).unwrap();
-            let mut surface = Surface::new(&context, window.clone()).unwrap();
-            surface
-                .resize(
-                    std::num::NonZeroU32::new(self.os_w.max(1)).unwrap(),
-                    std::num::NonZeroU32::new(self.os_h.max(1)).unwrap(),
-                )
-                .unwrap();
+            // Retry GPU context creation up to 3 times with 500ms delay.
+            // Handles transient GPU unavailability (e.g., after taskkill from mpv script).
+            let (gpu_ctx, gpu_surface) = {
+                let mut last_err = None;
+                let mut created = None;
+                for attempt in 0..3 {
+                    if attempt > 0 {
+                        std::thread::sleep(Duration::from_millis(500));
+                        log::info!("Retrying softbuffer init (attempt {})", attempt + 1);
+                    }
+                    let ctx = match Context::new(window.clone()) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            last_err = Some(format!("Context::new: {e:?}"));
+                            continue;
+                        }
+                    };
+                    let mut surf = match Surface::new(&ctx, window.clone()) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            last_err = Some(format!("Surface::new: {e:?}"));
+                            continue;
+                        }
+                    };
+                    let w = std::num::NonZeroU32::new(self.os_w.max(1)).unwrap();
+                    let h = std::num::NonZeroU32::new(self.os_h.max(1)).unwrap();
+                    match surf.resize(w, h) {
+                        Ok(()) => {
+                            created = Some((ctx, surf));
+                            break;
+                        }
+                        Err(e) => {
+                            last_err = Some(format!("resize: {e:?}"));
+                        }
+                    }
+                }
+                match created {
+                    Some(pair) => pair,
+                    None => {
+                        log::error!(
+                            "Failed to create softbuffer surface after 3 retries: {:?}",
+                            last_err
+                        );
+                        let msg = format!(
+                            "WinIsland 初始化 GPU 失败，可能是驱动暂时不可用。\n请稍后再试。\n\n错误: {:?}",
+                            last_err
+                        );
+                        let msg_wide: Vec<u16> =
+                            msg.encode_utf16().chain(std::iter::once(0)).collect();
+                        let title_wide: Vec<u16> = "WinIsland - 启动错误"
+                            .encode_utf16()
+                            .chain(std::iter::once(0))
+                            .collect();
+                        unsafe {
+                            let _ = windows::Win32::UI::WindowsAndMessaging::MessageBoxW(
+                                None,
+                                PCWSTR::from_raw(msg_wide.as_ptr()),
+                                PCWSTR::from_raw(title_wide.as_ptr()),
+                                windows::Win32::UI::WindowsAndMessaging::MESSAGEBOX_STYLE(0),
+                            );
+                        }
+                        event_loop.exit();
+                        return;
+                    }
+                }
+            };
+            let context = gpu_ctx;
+            let mut surface = gpu_surface;
             if let Ok(mut buf) = surface.buffer_mut() {
                 for p in buf.iter_mut() {
                     *p = 0;
@@ -943,6 +1028,10 @@ impl ApplicationHandler for App {
             self.surface = Some(surface);
             let is_light = window.theme() == Some(winit::window::Theme::Light);
             self.tray = Some(TrayManager::new(is_light));
+            log::info!(
+                "Tray icon created (theme={})",
+                if is_light { "light" } else { "dark" }
+            );
             Self::enforce_topmost(&window, self.win_x, self.win_y, self.os_w, self.os_h);
             window.set_visible(true);
             window.request_redraw();
@@ -955,6 +1044,7 @@ impl ApplicationHandler for App {
             match event {
                 WindowEvent::ThemeChanged(theme) => {
                     let is_light = theme == winit::window::Theme::Light;
+                    log::info!("Window theme changed to {:?}", theme);
                     if let Some(tray) = self.tray.as_mut() {
                         tray.update_theme(is_light);
                     }
@@ -969,6 +1059,7 @@ impl ApplicationHandler for App {
                         .extension()
                         .is_some_and(|e| e.eq_ignore_ascii_case("zip")) =>
                 {
+                    log::info!("File dropped: {}", path.display());
                     self.install_zip_drop(&path);
                 }
                 WindowEvent::HoveredFile(_) => (),
@@ -1186,8 +1277,19 @@ impl ApplicationHandler for App {
             );
 
         if self.frame_count.is_multiple_of(10) {
+            let prev_fullscreen = self.is_fullscreen_suppressed;
             self.is_fullscreen_suppressed = is_foreground_fullscreen();
             self.is_cursor_suppressed = is_cursor_hidden();
+            if self.is_fullscreen_suppressed != prev_fullscreen {
+                log::info!(
+                    "Fullscreen state: {}",
+                    if self.is_fullscreen_suppressed {
+                        "suppressed"
+                    } else {
+                        "normal"
+                    }
+                );
+            }
         }
 
         if self.is_fullscreen_suppressed || self.is_cursor_suppressed {
@@ -1202,6 +1304,12 @@ impl ApplicationHandler for App {
             self.last_media_playing = media.is_playing;
             music_active = true;
             if media.title != self.last_media_title {
+                log::info!(
+                    "Track changed: {} - {} / {}",
+                    media.title,
+                    media.artist,
+                    media.album
+                );
                 self.last_media_title = media.title.clone();
                 crate::ui::expanded::music_view::trigger_cover_flip();
                 crate::utils::backdrop::clear_dynamic_bg_cache();
@@ -1221,6 +1329,7 @@ impl ApplicationHandler for App {
             self.auto_hidden = false;
             self.idle_timer = Instant::now();
             self.spring_hide.velocity = -0.65;
+            log::info!("Island un-hidden (media playing)");
         } else if self.auto_hidden {
             if is_on_hidden_handle || is_hovering_visible {
                 self.auto_hidden = false;
@@ -1232,6 +1341,10 @@ impl ApplicationHandler for App {
         } else if is_idle && !self.manually_hidden {
             if self.idle_timer.elapsed().as_secs_f32() > self.config.auto_hide_delay {
                 self.auto_hidden = true;
+                log::info!(
+                    "Island auto-hidden (idle {:.1}s)",
+                    self.config.auto_hide_delay
+                );
             }
         } else if !self.manually_hidden && !is_idle {
             self.idle_timer = Instant::now();

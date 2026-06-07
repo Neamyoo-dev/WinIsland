@@ -16,10 +16,10 @@ cargo test           # Run tests
 
 | File | What it contains |
 |------|-----------------|
-| [.ai/ARCHITECTURE.md](.ai/ARCHITECTURE.md) | Project structure, module responsibilities, rendering pipeline, plugin system, Windows API usage |
-| [.ai/STYLE-GUIDE.md](.ai/STYLE-GUIDE.md) | Coding conventions, naming, unsafe safety comments, Skia patterns |
-| [.agents/skills/build-winisland/SKILL.md](.agents/skills/build-winisland/SKILL.md) | Build & test automation for AI agents |
-| [.agents/skills/commit-winisland/SKILL.md](.agents/skills/commit-winisland/SKILL.md) | Commit message generation for AI agents |
+| [.agents/ARCHITECTURE.md](.agents/ARCHITECTURE.md) | Project structure, module responsibilities, rendering pipeline, plugin system, Windows API usage |
+| [.agents/STYLE-GUIDE.md](.agents/STYLE-GUIDE.md) | Coding conventions, naming, unsafe safety comments, Skia patterns |
+| [.agents/skills/build-winisland/SKILL.md](.agents/skills/pr-check/SKILL.md) | Build & test automation for AI agents |
+| [.agents/skills/commit-winisland/SKILL.md](.agents/skills/commit-push/SKILL.md) | Commit message generation for AI agents |
 
 ## Agent behavior rules
 
