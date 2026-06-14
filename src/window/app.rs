@@ -1140,6 +1140,34 @@ impl ApplicationHandler for App {
                             music_active = true;
                         }
 
+                        let plugin_text: Option<(String, Option<String>)> = if !music_active {
+                            self.plugin_mgr.find_content(|provider| {
+                                match provider.get_content()? {
+                                    crate::plugin::types::IslandContent::Notification {
+                                        title,
+                                        message,
+                                        ..
+                                    } => Some((title, Some(message))),
+                                    crate::plugin::types::IslandContent::Status {
+                                        label,
+                                        value,
+                                        ..
+                                    } => Some((label, Some(value))),
+                                    crate::plugin::types::IslandContent::Music {
+                                        title,
+                                        artist,
+                                        ..
+                                    } => Some((title, Some(artist))),
+                                    crate::plugin::types::IslandContent::Shortcut {
+                                        name, ..
+                                    } => Some((name, None)),
+                                    crate::plugin::types::IslandContent::Custom(_) => None,
+                                }
+                            })
+                        } else {
+                            None
+                        };
+
                         let widget_animating = draw_island(
                             surface,
                             crate::core::render::DrawIslandParams {
@@ -1185,6 +1213,10 @@ impl ApplicationHandler for App {
                                     mini_controls: self.config.mini_controls,
                                     lyrics_delay: self.config.lyrics_delay,
                                     dt,
+                                },
+                                plugin: crate::core::render::PluginTextParams {
+                                    title: plugin_text.as_ref().map(|(t, _)| t.as_str()),
+                                    message: plugin_text.as_ref().and_then(|(_, m)| m.as_deref()),
                                 },
                             },
                         );

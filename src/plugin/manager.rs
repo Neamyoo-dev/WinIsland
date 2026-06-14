@@ -260,6 +260,19 @@ impl PluginManager {
         Ok(f(entry))
     }
 
+    /// Iterate over all content plugins and call `f` with each one.
+    /// Stops early if `f` returns `Some<T>` on any plugin.
+    pub fn find_content<F, T>(&self, mut f: F) -> Option<T>
+    where
+        F: FnMut(&mut dyn ContentProvider) -> Option<T>,
+    {
+        let mut entries = self.entries.write().ok()?;
+        entries
+            .iter_mut()
+            .filter(|p| p.plugin_type() == PluginType::Content)
+            .find_map(|entry| f(entry as &mut dyn ContentProvider))
+    }
+
     pub fn plugin_dir(&self) -> &Path {
         &self.plugin_dir
     }
